@@ -1,0 +1,354 @@
+{
+  "apiVersion": 1,
+  "id": "modera.workspace",
+  "name": "Filesystem",
+  "version": "0.3.0",
+  "description": "读取项目文件，预览并应用文件创建和文本编辑。",
+  "author": "Modera",
+  "category": "files",
+  "icon": "folder",
+  "main": "dist/index.cjs",
+  "permissions": [
+    "workspace.read",
+    "workspace.write"
+  ],
+  "extensions": [
+    "tool.result",
+    "tool.approval"
+  ],
+  "agentGuidance": "Read relevant project files before editing. Keep writes scoped to the project, use returned versions for large-file continuation, and avoid unrelated changes.",
+  "tools": [
+    {
+      "id": "workspace_read",
+      "description": "Read project files/directories. Directories use offset pagination. Text up to 2 MiB uses startLine/maxLines, returning hasMore/nextLine. Larger files (or explicit cursor) use UTF-8 BYTE cursor pages with nextCursor and version; pass both on continuation. Large-file pages are unnumbered. BOM detects UTF-8/UTF-16; specify encoding for GB18030. Paths project-relative, no symlinks. Output is bounded.",
+      "locales": {
+        "en": {
+          "title": "Read file or directory"
+        },
+        "zh-CN": {
+          "description": "读取项目目录或 UTF-8 文件，支持分页和按行读取。"
+        }
+      },
+      "concurrency": "independent-read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "cursor": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "encoding": {
+            "description": "BOM auto-detected; otherwise UTF-8. Specify gb18030 for legacy Chinese files. Edits preserve encoding/BOM.",
+            "enum": [
+              "utf8",
+              "utf16le",
+              "utf16be",
+              "gb18030"
+            ]
+          },
+          "maxLines": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "startLine": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "presentation": {
+        "icon": "file",
+        "kind": "file",
+        "metrics": [
+          {
+            "format": "count",
+            "label": "项",
+            "labelEn": "items",
+            "path": "entries"
+          },
+          {
+            "format": "chars",
+            "label": "字符",
+            "labelEn": "chars",
+            "path": "text"
+          },
+          {
+            "format": "chars",
+            "label": "字符",
+            "labelEn": "chars",
+            "path": "content"
+          }
+        ],
+        "targets": [
+          "path"
+        ],
+        "tone": "blue"
+      },
+      "requiredPermissions": [
+        "workspace.read"
+      ],
+      "title": "读取文件或目录"
+    },
+    {
+      "id": "workspace_create",
+      "description": "Create a project text file (UTF-8 default, optional encoding), creating parent directories when applied. Call once: the host previews the change and obtains approval before writing within this call. Existing files require overwrite=true and retain detected/explicit encoding. Changed files cause conflicts. Maximum 2 MiB; no symlinks or .git paths.",
+      "locales": {
+        "en": {
+          "title": "Create file"
+        },
+        "zh-CN": {
+          "description": "创建 UTF-8 文件，宿主在一次调用内预览并审批后写入；覆盖需显式指定。"
+        }
+      },
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 2097152,
+            "type": "string"
+          },
+          "encoding": {
+            "description": "BOM auto-detected; otherwise UTF-8. Specify gb18030 for legacy Chinese files. Edits preserve encoding/BOM.",
+            "enum": [
+              "utf8",
+              "utf16le",
+              "utf16be",
+              "gb18030"
+            ]
+          },
+          "overwrite": {
+            "type": "boolean"
+          },
+          "path": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "presentation": {
+        "icon": "file",
+        "kind": "edit",
+        "metrics": [
+          {
+            "format": "number",
+            "label": "字节",
+            "labelEn": "bytes",
+            "path": "bytes"
+          }
+        ],
+        "targets": [
+          "path"
+        ],
+        "tone": "teal"
+      },
+      "requiredPermissions": [
+        "workspace.read",
+        "workspace.write"
+      ],
+      "title": "创建文件"
+    },
+    {
+      "id": "workspace_replace_edit",
+      "description": "Exact text replacement preserving detected/explicit encoding, BOM and untouched newlines. UTF-8/UTF-16 BOM detected; specify encoding for GB18030. Copy raw searchContent, without numbered read prefixes. Multiple matches require occurrence (1-based); no fuzzy matching. Call once: the host previews and obtains approval before applying within this call. Rejects stale files and no-op edits.",
+      "locales": {
+        "en": {
+          "title": "Replace file text"
+        },
+        "zh-CN": {
+          "description": "精确替换文件文本，保留 BOM 和未修改的换行；先预览再审批应用，冲突时拒绝写入。"
+        }
+      },
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "encoding": {
+            "description": "BOM auto-detected; otherwise UTF-8. Specify gb18030 for legacy Chinese files. Edits preserve encoding/BOM.",
+            "enum": [
+              "utf8",
+              "utf16le",
+              "utf16be",
+              "gb18030"
+            ]
+          },
+          "occurrence": {
+            "maximum": 2097152,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "path": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "replaceContent": {
+            "maxLength": 2097152,
+            "type": "string"
+          },
+          "searchContent": {
+            "maxLength": 2097152,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "searchContent",
+          "replaceContent"
+        ],
+        "type": "object"
+      },
+      "presentation": {
+        "icon": "edit",
+        "kind": "edit",
+        "metrics": [
+          {
+            "format": "number",
+            "label": "字节",
+            "labelEn": "bytes",
+            "path": "bytes"
+          }
+        ],
+        "targets": [
+          "path"
+        ],
+        "tone": "amber"
+      },
+      "requiredPermissions": [
+        "workspace.read",
+        "workspace.write"
+      ],
+      "title": "替换文件文本"
+    },
+    {
+      "id": "workspace_batch_edit",
+      "description": "Edit 1-8 existing project files in ONE call, one combined diff approval. Each file has ordered exact replacements, occurrence required for ambiguous matches. Preserve encoding and untouched newlines/BOM. Entire batch is prevalidated; stale files reject. Per-file atomic writes with rollback on failure (not crash-atomic). Do not call preview/apply separately. Read files first.",
+      "locales": {
+        "en": {
+          "title": "Edit multiple files"
+        },
+        "zh-CN": {
+          "description": "一次审批编辑多个文件，精确替换、编码保留、版本冲突检查，提交失败尝试回滚。"
+        }
+      },
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "edits": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "occurrence": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "replaceContent": {
+                        "maxLength": 100000,
+                        "type": "string"
+                      },
+                      "searchContent": {
+                        "maxLength": 100000,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "searchContent",
+                      "replaceContent"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "encoding": {
+                  "description": "BOM auto-detected; otherwise UTF-8. Specify gb18030 for legacy Chinese files. Edits preserve encoding/BOM.",
+                  "enum": [
+                    "utf8",
+                    "utf16le",
+                    "utf16be",
+                    "gb18030"
+                  ]
+                },
+                "path": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "edits"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "type": "object"
+      },
+      "presentation": {
+        "icon": "edit",
+        "kind": "edit",
+        "metrics": [
+          {
+            "format": "count",
+            "label": "个文件",
+            "labelEn": "files",
+            "path": "files"
+          }
+        ],
+        "targets": [
+          "description"
+        ],
+        "tone": "amber"
+      },
+      "requiredPermissions": [
+        "workspace.read",
+        "workspace.write"
+      ],
+      "title": "批量编辑文件"
+    }
+  ],
+  "locales": {
+    "en": {
+      "description": "Read project files, preview and apply file creation and exact text edits."
+    },
+    "zh-CN": {
+      "name": "文件系统"
+    }
+  }
+}

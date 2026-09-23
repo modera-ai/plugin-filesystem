@@ -1,0 +1,25 @@
+{
+  "name": "@modera-plugin/workspace",
+  "version": "0.3.0",
+  "type": "module",
+  "description": "Read project files, preview and apply file creation and exact text edits.",
+  "files": [
+    "plugin.json",
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "modera-plugin-build ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@modera/plugin-build": "0.1.0",
+    "@modera/plugin-sdk": "0.1.0"
+  },
+  "dependencies": {
+    "iconv-lite": "0.7.3"
+  },
+  "license": "MIT"
+}
