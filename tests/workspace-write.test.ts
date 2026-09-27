@@ -190,6 +190,7 @@ it("real kernel approval denial cannot apply a write", () =>
     runtime.add({
       manifest,
       load: async () => ({ activate }),
+      readFrontend: async () => ({ body: new Uint8Array(await readFile(new URL("../dist/ui/write-result.js", import.meta.url))), mime: "text/javascript" }),
     });
     await runtime.reconcile(new Set([manifest.id]));
     const executor = new ToolExecutor(
