@@ -11,6 +11,7 @@ import { writeUi } from "./ui";
 import { encodingSchema } from "./codec";
 import { BatchWriter, batchDefinition } from "./batch";
 import { WriteQueue } from "./write-queue";
+import { workspaceMentions } from "./composer";
 
 const readDefinition = declaredTool(manifest, "workspace_read");
 export const activate: PluginModule["activate"] = async (host) => {
@@ -26,6 +27,7 @@ export const activate: PluginModule["activate"] = async (host) => {
     { once: true },
   );
   return {
+    composer: [workspaceMentions],
     ui: writeUi(),
     tools: [
       {
