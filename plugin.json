@@ -8,6 +8,7 @@
   "category": "files",
   "icon": "folder",
   "main": "dist/index.cjs",
+  "hostRenderers": { "write-result": { "entry": "write-result.js", "root": "dist/ui" } },
   "permissions": [
     "workspace.read",
     "workspace.write"

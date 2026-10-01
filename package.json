@@ -16,7 +16,10 @@
   },
   "devDependencies": {
     "@modera/plugin-build": "0.1.0",
-    "@modera/plugin-sdk": "0.1.0"
+    "@modera/plugin-sdk": "0.1.0",
+    "@modera/ui": "file:../../../modera-ui",
+    "react": "^19.1.1",
+    "@types/react": "^19.2.17"
   },
   "dependencies": {
     "iconv-lite": "0.7.3"
