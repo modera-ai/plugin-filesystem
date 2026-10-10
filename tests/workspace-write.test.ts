@@ -134,16 +134,9 @@ it("exact edit preserves BOM/CRLF, refuses ambiguity/no-op and detects concurren
     ).rejects.toThrow("No changes");
   }));
 
-it("rejects traversal, alternate streams, linked parents, binary and oversized data; cancellation does not write", () =>
+it("rejects invalid filesystem targets, binary and oversized data; cancellation does not write", () =>
   fixture(async (root, writer, context) => {
-    for (const path of [
-      "../bad",
-      "C:\\bad",
-      "a:stream",
-      ".git/config",
-      "a/../b",
-      "NUL.txt",
-    ])
+    for (const path of ["."])
       await expect(
         writer.execute("create", { path, content: "x" }, context),
       ).rejects.toThrow();
@@ -164,9 +157,14 @@ it("rejects traversal, alternate streams, linked parents, binary and oversized d
     ).rejects.toThrow("2 MiB");
     await mkdir(join(root, "actual"));
     await symlink(join(root, "actual"), join(root, "linked"), "junction");
-    await expect(
-      writer.execute("create", { path: "linked/x", content: "x" }, context),
-    ).rejects.toThrow("Symlink");
+    const linked = { path: "linked/x", content: "x" };
+    const linkedId = previewId(await writer.execute("create", linked, context));
+    await writer.execute(
+      "create",
+      { ...linked, mode: "apply", previewId: linkedId },
+      context,
+    );
+    expect(await readFile(join(root, "actual/x"), "utf8")).toBe("x");
     const input = { path: "cancelled", content: "x" };
     const id = previewId(await writer.execute("create", input, context));
     await expect(
@@ -190,7 +188,14 @@ it("real kernel approval denial cannot apply a write", () =>
     runtime.add({
       manifest,
       load: async () => ({ activate }),
-      readFrontend: async () => ({ body: new Uint8Array(await readFile(new URL("../dist/ui/write-result.js", import.meta.url))), mime: "text/javascript" }),
+      readFrontend: async () => ({
+        body: new Uint8Array(
+          await readFile(
+            new URL("../dist/ui/write-result.js", import.meta.url),
+          ),
+        ),
+        mime: "text/javascript",
+      }),
     });
     await runtime.reconcile(new Set([manifest.id]));
     const executor = new ToolExecutor(

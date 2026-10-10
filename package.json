@@ -1,6 +1,6 @@
 {
   "name": "@modera-plugin/filesystem",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "description": "Read project files, preview and apply file creation and exact text edits.",
   "files": [

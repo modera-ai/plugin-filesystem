@@ -31,7 +31,7 @@ export const activate: PluginModule["activate"] = async (host) => {
     tools: [
       {
         definition: readDefinition,
-        isAvailable: (context) => !!context.workspacePath,
+        isAvailable: () => true,
         execute: (input, context) =>
           readWorkspace(input, context, host.resourcePath),
       },
@@ -46,8 +46,7 @@ export const activate: PluginModule["activate"] = async (host) => {
           input: unknown,
           context: import("@modera/plugin-sdk").ToolContext,
         ) => writer.prepare(kind, input, context),
-        isAvailable: (context: import("@modera/plugin-sdk").ToolContext) =>
-          !!context.workspacePath,
+        isAvailable: () => true,
         execute: (
           input: unknown,
           context: import("@modera/plugin-sdk").ToolContext,

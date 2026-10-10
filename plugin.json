@@ -3,7 +3,7 @@
   "activationScope": "scoped",
   "id": "modera.filesystem",
   "name": "Filesystem",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "读取项目文件，预览并应用文件创建和文本编辑。",
   "author": "Modera",
   "category": "files",
@@ -17,11 +17,11 @@
   },
   "permissions": ["workspace.read", "workspace.write"],
   "extensions": ["tool.result", "tool.approval"],
-  "agentGuidance": "Read relevant project files before editing. Keep writes scoped to the project, use returned versions for large-file continuation, and avoid unrelated changes.",
+  "agentGuidance": "Read relevant project files before editing. Use absolute paths for files outside the project; relative paths resolve from the current project, use returned versions for large-file continuation, and avoid unrelated changes.",
   "tools": [
     {
       "id": "filesystem_read",
-      "description": "Read project text/directories, images (PNG/JPEG/GIF/WebP/BMP), PDF, Word (DOCX/DOC), spreadsheets (XLSX/XLS/XLSB/XLSM/ODS/CSV), and presentations (PPTX/PPT). Images return bounded visual data; GIF returns first frame. Documents extract plain text, not layout or OCR; legacy DOC/PPT recovery is incomplete. Use startLine/maxLines for text and documents; directory offset for listing; large plain text uses byte cursor/nextCursor. Carry version on continuation to reject changed files. Media <=32 MiB; text output bounded.",
+      "description": "Read local text/directories, images (PNG/JPEG/GIF/WebP/BMP), PDF, Word (DOCX/DOC), spreadsheets (XLSX/XLS/XLSB/XLSM/ODS/CSV), and presentations (PPTX/PPT). Images return bounded visual data; GIF returns first frame. Documents extract plain text, not layout or OCR; legacy DOC/PPT recovery is incomplete. Use startLine/maxLines for text and documents; directory offset for listing; large plain text uses byte cursor/nextCursor. Carry version on continuation to reject changed files. Media <=32 MiB; text output bounded.",
       "locales": {
         "en": {
           "title": "Read file or directory"
@@ -108,7 +108,7 @@
     },
     {
       "id": "filesystem_create",
-      "description": "Create a project text file (UTF-8 default, optional encoding), creating parent directories when applied. Call once: the host previews the change and obtains approval before writing within this call. Existing files require overwrite=true and retain detected/explicit encoding. Changed files cause conflicts. Maximum 2 MiB; no symlinks or .git paths.",
+      "description": "Create a local text file (UTF-8 default, optional encoding), creating parent directories when applied. Call once: the host previews the change and obtains approval before writing within this call. Existing files require overwrite=true and retain detected/explicit encoding. Changed files cause conflicts. Maximum 2 MiB; absolute and project-relative paths supported.",
       "locales": {
         "en": {
           "title": "Create file"
@@ -168,7 +168,7 @@
     },
     {
       "id": "filesystem_replace_edit",
-      "description": "Replace project text preserving original encoding/BOM and untouched newlines. LF/CRLF matching is supported; replacement adopts target newlines. Copy raw searchContent without line prefixes. Multiple matches require occurrence (1-based). Optional plugin settings enable indentation-preserving fuzzy matching (similarity >0.85) and formatting. Call once: host previews and approves the actual output before applying. Rejects stale files and no-op edits.",
+      "description": "Replace local text preserving original encoding/BOM and untouched newlines. LF/CRLF matching is supported; replacement adopts target newlines. Copy raw searchContent without line prefixes. Multiple matches require occurrence (1-based). Optional plugin settings enable indentation-preserving fuzzy matching (similarity >0.85) and formatting. Call once: host previews and approves the actual output before applying. Rejects stale files and no-op edits.",
       "locales": {
         "en": {
           "title": "Replace file text"
@@ -236,7 +236,7 @@
   ],
   "locales": {
     "en": {
-      "description": "Read project files, preview and apply file creation and exact text edits."
+      "description": "Read local files, preview and apply file creation and exact text edits."
     },
     "zh-CN": {
       "name": "文件系统"

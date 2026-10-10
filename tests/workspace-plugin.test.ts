@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { activate } from "../src";
 
-it("reads bounded numbered lines and rejects files outside the project", async () => {
+it("reads bounded numbered lines and accepts absolute and parent paths", async () => {
   const root = await mkdtemp(join(tmpdir(), "modera-workspace-test-"));
   try {
     await writeFile(join(root, "sample.txt"), "one\ntwo\nthree");
@@ -59,9 +59,12 @@ it("reads bounded numbered lines and rejects files outside the project", async (
         context,
       ),
     ).toMatchObject({ content: "2: two", totalLines: 3 });
-    await expect(tool.execute({ path: ".." }, context)).rejects.toThrow(
-      "outside",
-    );
+    expect(await tool.execute({ path: ".." }, context)).toMatchObject({
+      type: "directory",
+    });
+    expect(
+      await tool.execute({ path: join(root, "sample.txt") }, context),
+    ).toMatchObject({ content: "1: one\n2: two\n3: three" });
     await writeFile(join(root, "binary"), Buffer.from([0, 1]));
     await expect(tool.execute({ path: "binary" }, context)).rejects.toThrow(
       "Binary",

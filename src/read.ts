@@ -1,5 +1,5 @@
 import { opendir, stat } from "node:fs/promises";
-import { readTarget } from "@modera/plugin-sdk";
+import { localPath } from "./write-path";
 import { readText } from "./read-text";
 import type { ToolContext } from "@modera/plugin-sdk";
 import { extensionOf, mediaExtensions, readMedia } from "./media";
@@ -21,7 +21,7 @@ export async function readWorkspace(
     offset?: number;
   };
   context.signal.throwIfAborted();
-  const { target } = await readTarget(context.workspacePath!, path);
+  const target = localPath(context.workspacePath ?? process.cwd(), path);
   if ((await stat(target)).isDirectory()) {
     const entries: { name: string; type: string }[] = [];
     let index = 0;

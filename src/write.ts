@@ -36,9 +36,7 @@ interface Plan {
 export class WorkspaceWriter {
   constructor(
     private queue = new WriteQueue(),
-    private options: (
-      context: ToolContext,
-    ) => Promise<{
+    private options: (context: ToolContext) => Promise<{
       autoFormat?: boolean;
       fuzzyMatching?: boolean;
     }> = async () => ({}),
@@ -83,7 +81,7 @@ export class WorkspaceWriter {
     inspectOnly = false,
   ) {
     context.signal.throwIfAborted();
-    if (!context.workspacePath) throw new Error("Project required");
+
     if (
       input.mode !== undefined &&
       input.mode !== "preview" &&
@@ -91,7 +89,7 @@ export class WorkspaceWriter {
     )
       throw new Error("Invalid mode");
     const { root, target } = await writeTarget(
-      context.workspacePath,
+      context.workspacePath ?? process.cwd(),
       input.path,
     );
     const signature = hash(
@@ -258,7 +256,8 @@ export class WorkspaceWriter {
       } finally {
         await file.close();
       }
-      await writeTarget(plan.root, path);
+      if ((await writeTarget(plan.root, path)).target !== plan.target)
+        throw new Error("Path changed");
       const latest = await snapshot(plan.target, plan.encoding);
       if (
         latest?.hash !== plan.before?.hash ||
