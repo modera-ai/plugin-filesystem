@@ -204,7 +204,7 @@ it("real kernel approval denial cannot apply a write", () =>
         await executor.execute(
           {
             id: "apply",
-            name: "workspace_create",
+            name: "filesystem_create",
             input,
           },
           context,

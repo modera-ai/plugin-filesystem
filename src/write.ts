@@ -1,3 +1,4 @@
+import { replaceText } from "./edit-text";
 import { randomUUID } from "node:crypto";
 import { open, rename, link, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -29,9 +30,19 @@ interface Plan {
   session: string;
   project?: string;
   expires: number;
+  matchType: string;
+  formatted: boolean;
 }
 export class WorkspaceWriter {
-  constructor(private queue = new WriteQueue()) {}
+  constructor(
+    private queue = new WriteQueue(),
+    private options: (
+      context: ToolContext,
+    ) => Promise<{
+      autoFormat?: boolean;
+      fuzzyMatching?: boolean;
+    }> = async () => ({}),
+  ) {}
   async prepare(kind: "create" | "edit", raw: unknown, context: ToolContext) {
     const input = raw as Input;
     const preview = (await this.execute(
@@ -131,6 +142,8 @@ export class WorkspaceWriter {
         bytes: encodeText(plan.after, plan.encoding).length,
         hash: hash(encodeText(plan.after, plan.encoding)),
         encoding: plan.encoding,
+        matchType: plan.matchType,
+        formatted: plan.formatted,
         ...fileReview(plan.before?.text ?? "", plan.after),
       };
     }
@@ -138,6 +151,9 @@ export class WorkspaceWriter {
     const encoding = before?.encoding ?? input.encoding ?? "utf8";
     let after: string;
     let matchedLine = 1;
+    let matchType = "exact",
+      formatted = false;
+    const options = await this.options(context);
     if (kind === "create") {
       if (typeof input.content !== "string")
         throw new Error("Content required");
@@ -148,33 +164,23 @@ export class WorkspaceWriter {
       if (!before) throw new Error("File not found");
       if (!input.searchContent || typeof input.replaceContent !== "string")
         throw new Error("Search and replacement required");
-      const matches: number[] = [];
-      let offset = 0;
-      while (
-        (offset = before.text.indexOf(input.searchContent, offset)) !== -1
-      ) {
-        matches.push(offset);
-        offset += input.searchContent.length;
+      ({ after, matchedLine, matchType } = replaceText(
+        before.text,
+        input.searchContent,
+        input.replaceContent,
+        input.occurrence,
+        options.fuzzyMatching,
+      ));
+    }
+    if (options.autoFormat && kind === "edit") {
+      try {
+        const { formatText } = await import("./format");
+        const output = await formatText(input.path, after);
+        formatted = output !== after;
+        after = output;
+      } catch {
+        /* Unsupported/invalid syntax retains the explicit edit. */
       }
-      if (!matches.length)
-        throw new Error(
-          "Exact text not found; read the file and preserve indentation/newlines",
-        );
-      if (matches.length > 1 && input.occurrence === undefined)
-        throw new Error("Ambiguous match; specify occurrence");
-      const occurrence = input.occurrence ?? 1;
-      if (
-        !Number.isInteger(occurrence) ||
-        occurrence < 1 ||
-        occurrence > matches.length
-      )
-        throw new Error("Invalid occurrence");
-      const index = matches[occurrence - 1]!;
-      matchedLine = before.text.slice(0, index).split("\n").length;
-      after =
-        before.text.slice(0, index) +
-        input.replaceContent +
-        before.text.slice(index + input.searchContent.length);
     }
     if (after.includes("\0") || encodeText(after, encoding).length > FILE_LIMIT)
       throw new Error("Expected text at most 2 MiB");
@@ -192,6 +198,8 @@ export class WorkspaceWriter {
     const previewId = randomUUID();
     this.plans.set(previewId, {
       encoding,
+      matchType,
+      formatted,
       signature,
       before,
       after,
@@ -206,6 +214,8 @@ export class WorkspaceWriter {
       previewId,
       path: input.path,
       matchedLine,
+      matchType,
+      formatted,
       ...fileReview(before?.text ?? "", after),
       beforeHash: before?.hash ?? null,
       afterHash: hash(encodeText(after, encoding)),

@@ -9,12 +9,17 @@ it("reads bounded numbered lines and rejects files outside the project", async (
   try {
     await writeFile(join(root, "sample.txt"), "one\ntwo\nthree");
     const contributions = await activate({
-      pluginId: "modera.workspace",
+      pluginId: "modera.filesystem",
       storagePath: root,
       grantedPermissions: new Set(["workspace.read"]),
       signal: new AbortController().signal,
     });
     const tool = contributions!.tools![0]!;
+    expect(contributions!.tools!.map((item) => item.definition.id)).toEqual([
+      "filesystem_read",
+      "filesystem_create",
+      "filesystem_replace_edit",
+    ]);
     const context = {
       sessionId: "s",
       runId: "r",

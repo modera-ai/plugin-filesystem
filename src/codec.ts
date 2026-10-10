@@ -1,9 +1,27 @@
 import iconv from "iconv-lite";
-export type TextEncoding = "utf8" | "utf16le" | "utf16be" | "gb18030";
+import { analyse } from "chardet";
+export type TextEncoding =
+  | "utf8"
+  | "utf16le"
+  | "utf16be"
+  | "gb18030"
+  | "big5"
+  | "shift_jis"
+  | "euc-kr"
+  | "windows-1252";
 export const encodingSchema = {
-  enum: ["utf8", "utf16le", "utf16be", "gb18030"],
+  enum: [
+    "utf8",
+    "utf16le",
+    "utf16be",
+    "gb18030",
+    "big5",
+    "shift_jis",
+    "euc-kr",
+    "windows-1252",
+  ],
   description:
-    "BOM auto-detected; otherwise UTF-8. Specify gb18030 for legacy Chinese files. Edits preserve encoding/BOM.",
+    "BOM/legacy encoding detected; specify encoding when ambiguous. Edits preserve encoding/BOM.",
 };
 export function detectEncoding(
   bytes: Buffer,
@@ -15,7 +33,26 @@ export function detectEncoding(
     return "utf8";
   if (requested && !encodingSchema.enum.includes(requested))
     throw new Error("Unsupported encoding");
-  return requested ?? "utf8";
+  if (requested) return requested;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return "utf8";
+  } catch {
+    /* Detect legacy text conservatively. */
+  }
+  const aliases: Record<string, TextEncoding> = {
+    "UTF-8": "utf8",
+    GB18030: "gb18030",
+    Big5: "big5",
+    Shift_JIS: "shift_jis",
+    "EUC-KR": "euc-kr",
+    "windows-1252": "windows-1252",
+  };
+  for (const match of analyse(bytes)) {
+    if (match.confidence >= 50 && aliases[match.name])
+      return aliases[match.name]!;
+  }
+  return "utf8";
 }
 export function encodeText(text: string, encoding: TextEncoding): Buffer {
   const bytes = iconv.encode(text, encoding);
@@ -32,4 +69,26 @@ export function decodeText(bytes: Buffer, requested?: TextEncoding) {
       "Invalid text encoding; specify the correct encoding explicitly",
     );
   return { text, encoding };
+}
+
+/** Trim only a partial trailing character; invalid bytes in the body still fail. */
+export function decodePrefix(
+  bytes: Buffer,
+  encoding: TextEncoding,
+  final: boolean,
+) {
+  let failure: unknown;
+  for (let trim = 0; trim < (final ? 1 : 4) && trim <= bytes.length; trim++) {
+    try {
+      return {
+        ...decodeText(bytes.subarray(0, bytes.length - trim), encoding),
+        consumed: bytes.length - trim,
+      };
+    } catch (error) {
+      failure ??= error;
+    }
+  }
+  if (failure instanceof Error && failure.message.includes("Binary"))
+    throw failure;
+  throw new Error("Invalid text encoding or cursor boundary");
 }

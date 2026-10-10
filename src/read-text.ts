@@ -1,7 +1,12 @@
 import { open } from "node:fs/promises";
-import iconv from "iconv-lite";
+
 import type { ToolContext } from "@modera/plugin-sdk";
-import { decodeText, detectEncoding, type TextEncoding } from "./codec";
+import {
+  decodeText,
+  detectEncoding,
+  decodePrefix,
+  type TextEncoding,
+} from "./codec";
 
 interface ReadInput {
   path: string;
@@ -88,36 +93,18 @@ export async function readText(
     }
     if (input.startLine !== undefined && input.startLine !== 1)
       throw new Error("Large files require byte cursor paging, not startLine");
-    const header = Buffer.alloc(3);
-    await file.read(header, 0, 3, 0);
+    const header = Buffer.alloc(Math.min(8192, info.size));
+    await file.read(header, 0, header.length, 0);
     const encoding = detectEncoding(header, input.encoding);
     const buffer = Buffer.alloc(Math.min(3000, info.size - cursor));
     const { bytesRead } = await file.read(buffer, 0, buffer.length, cursor);
     context.signal.throwIfAborted();
-    let page: { text: string; encoding: TextEncoding } | undefined,
-      consumed = bytesRead;
-    // UTF-8/GB18030 code points can cross a byte-page boundary; never split them.
-    for (
-      let trim = 0;
-      trim < (cursor + bytesRead < info.size ? 4 : 1) && trim <= bytesRead;
-      trim++
-    ) {
-      try {
-        page = decodeText(buffer.subarray(0, bytesRead - trim), encoding);
-        consumed = bytesRead - trim;
-        break;
-      } catch {
-        /* Try only a trailing partial sequence. */
-      }
-    }
-    if (!page || (bytesRead && !consumed))
-      throw new Error("Invalid encoding or cursor boundary");
-    // Avoid accepting a trailing incomplete character as a replacement character.
-    if (
-      page.text.includes("�") &&
-      !iconv.encode(page.text, encoding).equals(buffer.subarray(0, consumed))
-    )
-      throw new Error("Invalid encoded page");
+    const page = decodePrefix(
+      buffer.subarray(0, bytesRead),
+      encoding,
+      cursor + bytesRead >= info.size,
+    );
+    const consumed = page.consumed;
     const latest = await file.stat();
     if (
       `${latest.dev}:${latest.ino}:${latest.size}:${latest.mtimeMs}:${latest.ctimeMs}` !==

@@ -1,6 +1,6 @@
 {
-  "name": "@modera-plugin/workspace",
-  "version": "0.3.0",
+  "name": "@modera-plugin/filesystem",
+  "version": "0.4.0",
   "type": "module",
   "description": "Read project files, preview and apply file creation and exact text edits.",
   "files": [
@@ -9,10 +9,12 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "modera-plugin-build .",
+    "build": "node tools/build.mjs",
     "pack": "modera-plugin pack .",
     "release": "modera-plugin release . --publish",
-    "dev": "node tools/modera-dev.mjs"
+    "dev": "node tools/modera-dev.mjs",
+    "prepack": "node tools/build.mjs",
+    "prerelease": "node tools/build.mjs"
   },
   "publishConfig": {
     "access": "public"
@@ -26,7 +28,21 @@
     "react": "^19.1.1"
   },
   "dependencies": {
-    "iconv-lite": "0.7.3"
+    "@jsquash/webp": "1.5.0",
+    "cfb": "1.2.2",
+    "chardet": "2.1.1",
+    "fast-xml-parser": "5.3.8",
+    "iconv-lite": "0.7.3",
+    "ignore": "7.0.5",
+    "image-size": "2.0.2",
+    "jimp": "1.6.1",
+    "jszip": "3.10.1",
+    "mammoth": "1.13.0",
+    "pdfjs-dist": "4.10.38",
+    "prettier": "3.6.2",
+    "supports-color": "8.1.1",
+    "word-extractor": "1.0.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "license": "MIT"
 }

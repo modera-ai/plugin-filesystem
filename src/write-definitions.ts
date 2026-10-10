@@ -6,5 +6,5 @@ const common = {
   path: { type: "string", minLength: 1, maxLength: 2000 },
   encoding: encodingSchema,
 };
-export const createDefinition = declaredTool(manifest, "workspace_create");
-export const editDefinition = declaredTool(manifest, "workspace_replace_edit");
+export const createDefinition = declaredTool(manifest, "filesystem_create");
+export const editDefinition = declaredTool(manifest, "filesystem_replace_edit");

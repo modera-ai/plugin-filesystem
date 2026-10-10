@@ -2,10 +2,12 @@ import { opendir, stat } from "node:fs/promises";
 import { readTarget } from "@modera/plugin-sdk";
 import { readText } from "./read-text";
 import type { ToolContext } from "@modera/plugin-sdk";
+import { extensionOf, mediaExtensions, readMedia } from "./media";
 
 export async function readWorkspace(
   input: unknown,
   context: ToolContext,
+  resourcePath?: string,
 ): Promise<unknown> {
   const {
     path,
@@ -48,6 +50,19 @@ export async function readWorkspace(
       hasMore,
       ...(hasMore ? { nextOffset: offset + entries.length } : {}),
     };
+  }
+  if (mediaExtensions.has(extensionOf(target))) {
+    if (!resourcePath)
+      throw new Error("Filesystem media resources are unavailable");
+    const options = input as Parameters<typeof readMedia>[1] & {
+      cursor?: number;
+      offset?: number;
+    };
+    if (options.cursor !== undefined || options.offset !== undefined)
+      throw new Error(
+        "Images/documents use startLine/maxLines, not byte cursor or directory offset",
+      );
+    return readMedia(target, options, context, resourcePath);
   }
   return readText(target, input as Parameters<typeof readText>[1], context);
 }

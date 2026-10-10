@@ -1,10 +1,10 @@
 import type { PluginUiContribution } from "@modera/plugin-sdk";
 export function writeUi(): PluginUiContribution[] {
   return (["tool.result", "tool.approval"] as const).map((slot) => ({
-    id: `modera.workspace.write-${slot === "tool.approval" ? "approval" : "result"}`,
+    id: `modera.filesystem.write-${slot === "tool.approval" ? "approval" : "result"}`,
     slot,
     hostRenderer: "write-result",
-    toolNames: ["workspace_create", "workspace_replace_edit", "workspace_batch_edit"],
+    toolNames: ["filesystem_create", "filesystem_replace_edit"],
     requiredPermissions: ["workspace.read"],
     async render(request) {
       if (slot === "tool.approval" && !request.tool?.result) throw new Error("Approval preview unavailable");
