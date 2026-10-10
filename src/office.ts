@@ -60,14 +60,23 @@ export async function extractDocument(bytes: Buffer, extension: string) {
       ) {
         const page = await document.getPage(i);
         const content = await page.getTextContent();
-        text +=
-          `[Page ${i}]\n` +
-          content.items
-            .map((item: any) =>
-              item.str ? item.str + (item.hasEOL ? "\n" : " ") : "",
-            )
-            .join("") +
-          "\n";
+        let previousY: number | undefined;
+        let pageText = "";
+        for (const item of content.items as any[]) {
+          if (typeof item.str !== "string" || !item.str) continue;
+          const y = item.transform?.[5];
+          if (
+            previousY !== undefined &&
+            typeof y === "number" &&
+            Math.abs(y - previousY) > 2 &&
+            pageText &&
+            !pageText.endsWith("\n")
+          )
+            pageText += "\n";
+          pageText += item.str + (item.hasEOL ? "\n" : " ");
+          if (typeof y === "number") previousY = y;
+        }
+        text += `[Page ${i}]\n` + pageText.trimEnd() + "\n";
         page.cleanup();
       }
       if (!text.replace(/\[Page \d+\]/g, "").trim())
