@@ -14,9 +14,9 @@
     "build": "node tools/build.mjs",
     "pack": "modera-plugin pack .",
     "release": "modera-plugin release . --publish",
-    "dev": "node tools/modera-dev.mjs",
     "prepack": "node tools/build.mjs",
-    "prerelease": "node tools/build.mjs"
+    "prerelease": "node tools/build.mjs",
+    "dev": "node tools/modera-dev.mjs"
   },
   "publishConfig": {
     "access": "public"
