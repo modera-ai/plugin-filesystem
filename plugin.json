@@ -391,5 +391,8 @@
         }
       }
     }
-  }
+  },
+  "contributions": [
+    "composer"
+  ]
 }
