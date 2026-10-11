@@ -102,6 +102,8 @@ it(
         resourcePath,
       );
       expect(visual.type).toBe("image");
+      expect(visual.width).toBe(12);
+      expect(visual.height).toBe(8);
       expect(visual.images[0].mimeType).toBe("image/png");
       expect(
         Buffer.from(visual.images[0].data, "base64").subarray(1, 4).toString(),

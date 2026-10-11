@@ -47,13 +47,15 @@ parentPort!.once(
           originalHeight = image.height;
         if (image.width * image.height > 40_000_000)
           throw new Error("Image exceeds 40 megapixel budget");
-        image.scaleToFit({ w: 1600, h: 1600 });
+        if (image.width > 1600 || image.height > 1600)
+          image.scaleToFit({ w: 1600, h: 1600 });
         let encoded = await image.getBuffer("image/png");
         let mimeType: "image/png" | "image/jpeg" = "image/png";
         if (encoded.length > 700_000) {
           mimeType = "image/jpeg";
           for (const size of [1600, 1200, 800, 400]) {
-            image.scaleToFit({ w: size, h: size });
+            if (image.width > size || image.height > size)
+              image.scaleToFit({ w: size, h: size });
             encoded = await image.getBuffer("image/jpeg", { quality: 75 });
             if (encoded.length <= 700_000) break;
           }
