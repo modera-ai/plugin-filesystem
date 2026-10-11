@@ -2,13 +2,15 @@
   "name": "@modera-plugin/filesystem",
   "version": "0.4.1",
   "type": "module",
-  "description": "Read project files, preview and apply file creation and exact text edits.",
+  "description": "Read local files, preview and apply creation, text replacement and line copy/cut operations.",
   "files": [
     "plugin.json",
     "dist",
     "LICENSE"
   ],
   "scripts": {
+    "test": "node tools/test.mjs",
+    "test:integration": "node tools/test.mjs --integration",
     "build": "node tools/build.mjs",
     "pack": "modera-plugin pack .",
     "release": "modera-plugin release . --publish",

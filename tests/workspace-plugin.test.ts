@@ -19,6 +19,7 @@ it("reads bounded numbered lines and accepts absolute and parent paths", async (
       "filesystem_read",
       "filesystem_create",
       "filesystem_replace_edit",
+      "filesystem_copy",
     ]);
     const context = {
       sessionId: "s",
@@ -97,6 +98,7 @@ it("reports an empty directory without guessing files", async () => {
       type: "directory",
       path: ".",
       entries: [],
+      version: expect.any(String),
       empty: true,
       hasMore: false,
     });

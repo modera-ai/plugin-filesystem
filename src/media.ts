@@ -2,6 +2,7 @@ import { open } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
 import { extname, join } from "node:path";
 import type { ToolContext } from "@modera/plugin-sdk";
+import { readOptions } from "./read-options";
 
 export const mediaExtensions = new Set([
   "png",
@@ -28,12 +29,14 @@ export async function readMedia(
   input: {
     path: string;
     startLine?: number;
+    endLine?: number;
     maxLines?: number;
     version?: string;
   },
   context: ToolContext,
   resourcePath: string,
 ) {
+  input = readOptions(input);
   const file = await open(target, "r");
   let bytes: Buffer, version: string;
   try {

@@ -3,7 +3,11 @@ import { declaredTool } from "@modera/plugin-sdk";
 import type { PluginModule } from "@modera/plugin-sdk";
 import { readWorkspace } from "./read";
 import { WorkspaceWriter } from "./write";
-import { createDefinition, editDefinition } from "./write-definitions";
+import {
+  createDefinition,
+  editDefinition,
+  copyDefinition,
+} from "./write-definitions";
 import { writeUi } from "./ui";
 import { WriteQueue } from "./write-queue";
 import { workspaceMentions } from "./composer";
@@ -39,6 +43,7 @@ export const activate: PluginModule["activate"] = async (host) => {
         [
           [createDefinition, "create"],
           [editDefinition, "edit"],
+          [copyDefinition, "copy"],
         ] as const
       ).map(([definition, kind]) => ({
         definition,

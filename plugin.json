@@ -4,7 +4,7 @@
   "id": "modera.filesystem",
   "name": "Filesystem",
   "version": "0.4.1",
-  "description": "读取项目文件，预览并应用文件创建和文本编辑。",
+  "description": "读取本地文件，预览并应用文件创建、文本替换及按行复制或剪切。",
   "author": "Modera",
   "category": "files",
   "icon": "folder",
@@ -15,13 +15,19 @@
       "root": "dist/ui"
     }
   },
-  "permissions": ["workspace.read", "workspace.write"],
-  "extensions": ["tool.result", "tool.approval"],
-  "agentGuidance": "Read relevant project files before editing. Use absolute paths for files outside the project; relative paths resolve from the current project, use returned versions for large-file continuation, and avoid unrelated changes.",
+  "permissions": [
+    "workspace.read",
+    "workspace.write"
+  ],
+  "extensions": [
+    "tool.result",
+    "tool.approval"
+  ],
+  "agentGuidance": "Read relevant files before editing. Prefer filesystem_copy when the desired text already exists on disk; its line coordinates refer to the files before the operation. Inspect every changed file in the approval preview. Use absolute paths outside the project; relative paths resolve from the current project, ~ expands to the user home directory. Carry returned versions on read continuation, reread after formatting, and avoid unrelated changes.",
   "tools": [
     {
       "id": "filesystem_read",
-      "description": "Read local text/directories, images (PNG/JPEG/GIF/WebP/BMP), PDF, Word (DOCX/DOC), spreadsheets (XLSX/XLS/XLSB/XLSM/ODS/CSV), and presentations (PPTX/PPT). Images return bounded visual data; GIF returns first frame. Documents extract plain text, not layout or OCR; legacy DOC/PPT recovery is incomplete. Use startLine/maxLines for text and documents; directory offset for listing; large plain text uses byte cursor/nextCursor. Carry version on continuation to reject changed files. Media <=32 MiB; text output bounded.",
+      "description": "Read local text/directories, images (PNG/JPEG/GIF/WebP/BMP), PDF, Word (DOCX/DOC), spreadsheets (XLSX/XLS/XLSB/XLSM/ODS/CSV), and presentations (PPTX/PPT). Images return bounded visual data; GIF returns first frame. Documents extract plain text, not layout or OCR; legacy DOC/PPT recovery is incomplete. Use startLine/maxLines for text and documents; directory offset for listing; large plain text uses byte cursor/nextCursor. Carry version on continuation to reject changed files. Media <=32 MiB; text output bounded. Optional endLine selects an inclusive range; reversed ranges are swapped. Directories are sorted and versioned, with offset paging (maximum 50000 entries). Paths support ~ and absolute/project-relative paths.",
       "locales": {
         "en": {
           "title": "Read file or directory"
@@ -72,9 +78,16 @@
           "startLine": {
             "minimum": 1,
             "type": "integer"
+          },
+          "endLine": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Inclusive end line. Reversed ranges are swapped. Responses remain bounded to 200 lines and the output budget; follow nextLine/nextCursor with version."
           }
         },
-        "required": ["path"],
+        "required": [
+          "path"
+        ],
         "type": "object"
       },
       "presentation": {
@@ -100,15 +113,19 @@
             "path": "content"
           }
         ],
-        "targets": ["path"],
+        "targets": [
+          "path"
+        ],
         "tone": "blue"
       },
-      "requiredPermissions": ["workspace.read"],
+      "requiredPermissions": [
+        "workspace.read"
+      ],
       "title": "读取文件或目录"
     },
     {
       "id": "filesystem_create",
-      "description": "Create a local text file (UTF-8 default, optional encoding), creating parent directories when applied. Call once: the host previews the change and obtains approval before writing within this call. Existing files require overwrite=true and retain detected/explicit encoding. Changed files cause conflicts. Maximum 2 MiB; absolute and project-relative paths supported.",
+      "description": "Create a local text file, creating parent directories only when applied. Existing files require overwrite=true and retain encoding/BOM. Optional autoFormat runs before the actual output is previewed. The host obtains approval in this call; changed files are rejected. Maximum 2 MiB. Paths support ~ and absolute/project-relative paths.",
       "locales": {
         "en": {
           "title": "Create file"
@@ -146,7 +163,10 @@
             "type": "string"
           }
         },
-        "required": ["path", "content"],
+        "required": [
+          "path",
+          "content"
+        ],
         "type": "object"
       },
       "presentation": {
@@ -160,21 +180,26 @@
             "path": "bytes"
           }
         ],
-        "targets": ["path"],
+        "targets": [
+          "path"
+        ],
         "tone": "teal"
       },
-      "requiredPermissions": ["workspace.read", "workspace.write"],
+      "requiredPermissions": [
+        "workspace.read",
+        "workspace.write"
+      ],
       "title": "创建文件"
     },
     {
       "id": "filesystem_replace_edit",
-      "description": "Replace local text preserving original encoding/BOM and untouched newlines. LF/CRLF matching is supported; replacement adopts target newlines. Copy raw searchContent without line prefixes. Multiple matches require occurrence (1-based). Optional plugin settings enable indentation-preserving fuzzy matching (similarity >0.85) and formatting. Call once: host previews and approves the actual output before applying. Rejects stale files and no-op edits.",
+      "description": "Replace local text preserving encoding/BOM and untouched newlines. LF/CRLF matching and copied line-number prefixes are supported. Multiple matches require occurrence (1-based). Optional fuzzyMatching enables whitespace recovery, uniform space-indentation repair for Python/YAML/Makefile, and bounded fuzzy matching (similarity >0.85 without discarding indentation). Ambiguity is rejected. Optional formatting runs before approval. The host previews the actual output and approves within this call; stale files and no-op edits are rejected.",
       "locales": {
         "en": {
           "title": "Replace file text"
         },
         "zh-CN": {
-          "description": "精确替换文件文本，保留 BOM 和未修改的换行；先预览再审批应用，冲突时拒绝写入。"
+          "description": "替换文件文本，保留编码及未修改换行；可选空白、缩进和模糊匹配，先预览实际内容再审批，歧义或冲突时拒绝写入。"
         }
       },
       "inputSchema": {
@@ -213,7 +238,11 @@
             "type": "string"
           }
         },
-        "required": ["path", "searchContent", "replaceContent"],
+        "required": [
+          "path",
+          "searchContent",
+          "replaceContent"
+        ],
         "type": "object"
       },
       "presentation": {
@@ -227,16 +256,114 @@
             "path": "bytes"
           }
         ],
-        "targets": ["path"],
+        "targets": [
+          "path"
+        ],
         "tone": "amber"
       },
-      "requiredPermissions": ["workspace.read", "workspace.write"],
+      "requiredPermissions": [
+        "workspace.read",
+        "workspace.write"
+      ],
       "title": "替换文件文本"
+    },
+    {
+      "id": "filesystem_copy",
+      "title": "复制或剪切文件行",
+      "description": "Copy/cut an inclusive source line range to a target without retyping its content. mode=insert (default) inserts before targetLine, position=after inserts after it, and omitted targetLine appends. mode=replace requires targetLine and targetEndLine. deleteSource=true cuts the source range. Coordinates refer to files BEFORE this operation. Reversed ranges are swapped and end lines clamped. Same-file overlapping cuts and no-op operations are rejected. New targets inherit source encoding/BOM; existing targets keep encoding/BOM, untouched newlines and trailing-newline state. Pasted lines adopt target newlines. The host previews ALL changed files and obtains approval in this call. Both source and target are checked for conflicts. Cross-file cuts stage both outputs and attempt rollback on failure; they are not a filesystem-wide atomic transaction. Files and outputs must be at most 2 MiB. Optional formatting is completed before preview; reread after formatted operations. Paths support ~ and absolute/project-relative paths.",
+      "locales": {
+        "en": {
+          "title": "Copy or cut file lines"
+        },
+        "zh-CN": {
+          "description": "按行号复制或剪切文本，支持插入、替换及同文件搬移；同时预览源和目标改动，审批后检查冲突并应用。"
+        }
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "sourceFilePath": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "sourceStartLine": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceEndLine": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "insert",
+              "replace"
+            ]
+          },
+          "targetLine": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "targetEndLine": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "position": {
+            "type": "string",
+            "enum": [
+              "before",
+              "after"
+            ]
+          },
+          "deleteSource": {
+            "type": "boolean"
+          },
+          "encoding": {
+            "description": "BOM and legacy text encoding detected; specify encoding when detection is ambiguous. Edits preserve the original encoding/BOM.",
+            "enum": [
+              "utf8",
+              "utf16le",
+              "utf16be",
+              "gb18030",
+              "big5",
+              "shift_jis",
+              "euc-kr",
+              "windows-1252"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "sourceFilePath",
+          "sourceStartLine"
+        ]
+      },
+      "requiredPermissions": [
+        "workspace.read",
+        "workspace.write"
+      ],
+      "presentation": {
+        "icon": "file",
+        "kind": "edit",
+        "targets": [
+          "sourceFilePath",
+          "path"
+        ],
+        "tone": "teal"
+      }
     }
   ],
   "locales": {
     "en": {
-      "description": "Read local files, preview and apply file creation and exact text edits."
+      "description": "Read local files, preview and apply file creation, text replacement and line copy/cut operations."
     },
     "zh-CN": {
       "name": "文件系统"
@@ -247,10 +374,10 @@
     "fuzzyMatching": {
       "default": false,
       "type": "boolean",
-      "title": "Allow conservative fuzzy matching",
+      "title": "Allow whitespace, indentation and fuzzy recovery",
       "locales": {
         "zh-CN": {
-          "title": "允许保守模糊匹配"
+          "title": "允许空白、缩进和保守模糊匹配"
         }
       }
     },

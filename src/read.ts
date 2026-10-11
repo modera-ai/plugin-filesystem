@@ -3,36 +3,41 @@ import { localPath } from "./write-path";
 import { readText } from "./read-text";
 import type { ToolContext } from "@modera/plugin-sdk";
 import { extensionOf, mediaExtensions, readMedia } from "./media";
+import { readOptions } from "./read-options";
+import { hash } from "./file-snapshot";
 
 export async function readWorkspace(
   input: unknown,
   context: ToolContext,
   resourcePath?: string,
 ): Promise<unknown> {
-  const {
-    path,
-    startLine = 1,
-    maxLines = 100,
-    offset = 0,
-  } = input as {
-    path: string;
-    startLine?: number;
-    maxLines?: number;
-    offset?: number;
-  };
+  const options = readOptions(
+    input as {
+      path: string;
+      startLine?: number;
+      endLine?: number;
+      maxLines?: number;
+      offset?: number;
+      cursor?: number;
+      version?: string;
+    },
+  );
+  const { path, offset = 0 } = options;
   context.signal.throwIfAborted();
   const target = localPath(context.workspacePath ?? process.cwd(), path);
   if ((await stat(target)).isDirectory()) {
+    if (options.cursor !== undefined || options.endLine !== undefined)
+      throw new Error("Directories use offset, not cursor or endLine");
+    if (!Number.isSafeInteger(offset) || offset < 0)
+      throw new Error("Invalid directory offset");
     const entries: { name: string; type: string }[] = [];
-    let index = 0;
-    let hasMore = false;
+    const initial = await stat(target);
     for await (const entry of await opendir(target)) {
       context.signal.throwIfAborted();
-      if (index++ < offset) continue;
-      if (entries.length === 200) {
-        hasMore = true;
-        break;
-      }
+      if (entries.length >= 50000)
+        throw new Error(
+          "Directory exceeds 50000 entries; read a narrower directory",
+        );
       entries.push({
         name: entry.name,
         type: entry.isSymbolicLink()
@@ -42,13 +47,28 @@ export async function readWorkspace(
             : "file",
       });
     }
+    entries.sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
+    const latest = await stat(target);
+    if (
+      initial.mtimeMs !== latest.mtimeMs ||
+      initial.ctimeMs !== latest.ctimeMs
+    )
+      throw new Error("Directory changed while reading");
+    const version = hash(JSON.stringify(entries));
+    if (options.version && options.version !== version)
+      throw new Error("Directory changed between pages; restart reading");
+    const page = entries.slice(offset, offset + 200),
+      hasMore = offset + page.length < entries.length;
     return {
       type: "directory",
       path,
-      entries,
+      entries: page,
+      version,
       empty: offset === 0 && entries.length === 0,
       hasMore,
-      ...(hasMore ? { nextOffset: offset + entries.length } : {}),
+      ...(hasMore ? { nextOffset: offset + page.length } : {}),
     };
   }
   if (mediaExtensions.has(extensionOf(target))) {
@@ -64,5 +84,7 @@ export async function readWorkspace(
       );
     return readMedia(target, options, context, resourcePath);
   }
+  if (options.offset !== undefined)
+    throw new Error("Text files use line ranges or cursor, not offset");
   return readText(target, input as Parameters<typeof readText>[1], context);
 }

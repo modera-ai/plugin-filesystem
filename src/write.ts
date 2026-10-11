@@ -1,37 +1,40 @@
-import { replaceText } from "./edit-text";
 import { randomUUID } from "node:crypto";
-import { open, rename, link, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import type { ToolContext } from "@modera/plugin-sdk";
+import { replaceText } from "./edit-text";
+import { copyText, type CopyInput } from "./copy-text";
 import { FILE_LIMIT, hash, snapshot } from "./file-snapshot";
-import { cleanParents, writeTarget } from "./write-path";
+import { writeTarget } from "./write-path";
 import { fileReview } from "./review";
 import { encodeText, type TextEncoding } from "./codec";
 import { WriteQueue } from "./write-queue";
+import {
+  applyChanges,
+  verifyChanges,
+  type FileChange,
+} from "./write-transaction";
 
-interface Input {
-  encoding?: TextEncoding;
+type Kind = "create" | "edit" | "copy";
+interface Input extends Omit<Partial<CopyInput>, "mode"> {
   path: string;
+  encoding?: TextEncoding;
   content?: string;
   overwrite?: boolean;
   searchContent?: string;
   replaceContent?: string;
   occurrence?: number;
-  mode?: "preview" | "apply";
+  mode?: "preview" | "apply" | "insert" | "replace";
+  phase?: "preview" | "apply";
   previewId?: string;
 }
 interface Plan {
-  encoding: TextEncoding;
   signature: string;
-  before: Awaited<ReturnType<typeof snapshot>>;
-  after: string;
-  target: string;
+  changes: FileChange[];
+  observed: FileChange[];
   root: string;
   session: string;
   project?: string;
   expires: number;
-  matchType: string;
-  formatted: boolean;
+  result: Record<string, unknown>;
 }
 export class WorkspaceWriter {
   constructor(
@@ -41,116 +44,103 @@ export class WorkspaceWriter {
       fuzzyMatching?: boolean;
     }> = async () => ({}),
   ) {}
-  async prepare(kind: "create" | "edit", raw: unknown, context: ToolContext) {
+  private plans = new Map<string, Plan>();
+  clear(): void {
+    this.plans.clear();
+  }
+  async prepare(kind: Kind, raw: unknown, context: ToolContext) {
     const input = raw as Input;
+    const key = kind === "copy" ? "phase" : "mode";
     const preview = (await this.execute(
       kind,
-      { ...input, mode: "preview" },
+      { ...input, [key]: "preview" },
       context,
     )) as { previewId: string };
     return {
-      input: { ...input, mode: "apply", previewId: preview.previewId },
+      input: { ...input, [key]: "apply", previewId: preview.previewId },
       preview,
       dispose: () => {
         this.plans.delete(preview.previewId);
       },
     };
   }
-  inspect(
-    kind: "create" | "edit",
-    raw: unknown,
-    context: ToolContext,
-  ): Promise<unknown> {
-    return this.queue.run(() => this.run(kind, raw as Input, context, true));
+  inspect(kind: Kind, raw: unknown, context: ToolContext): Promise<unknown> {
+    return this.locked(kind, raw as Input, context, true);
   }
-  private plans = new Map<string, Plan>();
-  clear(): void {
-    this.plans.clear();
+  execute(kind: Kind, raw: unknown, context: ToolContext): Promise<unknown> {
+    return this.locked(kind, raw as Input, context);
   }
-  execute(
-    kind: "create" | "edit",
-    raw: unknown,
-    context: ToolContext,
-  ): Promise<unknown> {
-    return this.queue.run(() => this.run(kind, raw as Input, context));
-  }
-  private async run(
-    kind: "create" | "edit",
+  private async locked(
+    kind: Kind,
     input: Input,
     context: ToolContext,
     inspectOnly = false,
   ) {
+    const root = context.workspacePath ?? process.cwd();
+    const paths = [input.path];
+    if (kind === "copy") {
+      if (!input.sourceFilePath) throw new Error("sourceFilePath required");
+      paths.push(input.sourceFilePath);
+    }
+    const targets = await Promise.all(
+      paths.map((path) => writeTarget(root, path)),
+    );
+    const keys = targets.map(({ target }) =>
+      process.platform === "win32" ? target.toLowerCase() : target,
+    );
+    return this.queue.run(
+      () => this.run(kind, input, context, inspectOnly),
+      keys,
+    );
+  }
+  private async run(
+    kind: Kind,
+    input: Input,
+    context: ToolContext,
+    inspectOnly: boolean,
+  ) {
     context.signal.throwIfAborted();
-
-    if (
-      input.mode !== undefined &&
-      input.mode !== "preview" &&
-      input.mode !== "apply"
-    )
+    const phase = kind === "copy" ? input.phase : input.mode;
+    if (phase !== undefined && phase !== "preview" && phase !== "apply")
       throw new Error("Invalid mode");
     const { root, target } = await writeTarget(
       context.workspacePath ?? process.cwd(),
       input.path,
     );
+    const { previewId: _id, phase: _phase, mode, ...args } = input;
     const signature = hash(
-      JSON.stringify([
-        kind,
-        input.path,
-        input.content,
-        input.overwrite ?? false,
-        input.searchContent,
-        input.replaceContent,
-        input.occurrence,
-        input.encoding,
-      ]),
+      JSON.stringify([kind, args, kind === "copy" ? (mode ?? "insert") : null]),
     );
     for (const [id, plan] of this.plans)
       if (plan.expires < Date.now()) this.plans.delete(id);
-    if (input.mode === "apply") {
+    if (phase === "apply") {
       const plan = this.plans.get(input.previewId ?? "");
       if (
         !plan ||
         plan.signature !== signature ||
         plan.root !== root ||
-        plan.target !== target ||
+        plan.changes[0]!.target !== target ||
         plan.session !== context.sessionId ||
         plan.project !== context.projectId
       )
         throw new Error(
           "Invalid/expired preview; generate a new preview with the same arguments",
         );
-      if (inspectOnly) {
-        const current = await snapshot(target, plan.encoding);
-        if (
-          current?.hash !== plan.before?.hash ||
-          current?.identity !== plan.before?.identity
-        )
-          throw new Error("File changed since preview");
-        return {
-          status: "preview",
-          path: input.path,
-          ...fileReview(plan.before?.text ?? "", plan.after),
-        };
-      }
-      await this.apply(plan, input.path, context);
+      await verifyChanges(root, plan.observed);
+      if (inspectOnly) return { status: "preview", ...plan.result };
       this.plans.delete(input.previewId!);
-      return {
-        status: "applied",
-        path: input.path,
-        bytes: encodeText(plan.after, plan.encoding).length,
-        hash: hash(encodeText(plan.after, plan.encoding)),
-        encoding: plan.encoding,
-        matchType: plan.matchType,
-        formatted: plan.formatted,
-        ...fileReview(plan.before?.text ?? "", plan.after),
-      };
+      await applyChanges(root, plan.changes, context, plan.observed);
+      return { status: "applied", ...plan.result };
     }
     const before = await snapshot(target, input.encoding);
-    const encoding = before?.encoding ?? input.encoding ?? "utf8";
-    let after: string;
-    let matchedLine = 1;
-    let matchType = "exact",
+    let encoding = before?.encoding ?? input.encoding ?? "utf8",
+      after: string;
+    let matchedLine = 1,
+      matchType = "exact",
       formatted = false;
+    const metadata: Record<string, unknown> = {};
+    const observed: FileChange[] = [],
+      changes: FileChange[] = [];
     const options = await this.options(context);
     if (kind === "create") {
       if (typeof input.content !== "string")
@@ -158,7 +148,7 @@ export class WorkspaceWriter {
       if (before && input.overwrite !== true)
         throw new Error("File exists; use overwrite=true or replace_edit");
       after = input.content;
-    } else {
+    } else if (kind === "edit") {
       if (!before) throw new Error("File not found");
       if (!input.searchContent || typeof input.replaceContent !== "string")
         throw new Error("Search and replacement required");
@@ -168,115 +158,122 @@ export class WorkspaceWriter {
         input.replaceContent,
         input.occurrence,
         options.fuzzyMatching,
+        input.path,
       ));
-    }
-    if (options.autoFormat && kind === "edit") {
-      try {
-        const { formatText } = await import("./format");
-        const output = await formatText(input.path, after);
-        formatted = output !== after;
-        after = output;
-      } catch {
-        /* Unsupported/invalid syntax retains the explicit edit. */
+    } else {
+      const sourceTarget = await writeTarget(root, input.sourceFilePath!);
+      const sameFile =
+        process.platform === "win32"
+          ? sourceTarget.target.toLowerCase() === target.toLowerCase()
+          : sourceTarget.target === target;
+      const source = sameFile
+        ? before
+        : await snapshot(sourceTarget.target, input.encoding);
+      if (!source) throw new Error("Source file not found");
+      const copied = copyText(
+        source.text,
+        before?.text ?? null,
+        sameFile,
+        input as CopyInput,
+      );
+      after = copied.after;
+      encoding = before?.encoding ?? source.encoding;
+      const { sourceAfter, after: _after, ...details } = copied;
+      Object.assign(metadata, details, {
+        sourceFilePath: input.sourceFilePath,
+        deleteSource: input.deleteSource === true,
+      });
+      matchedLine = copied.matchedLineStart;
+      if (!sameFile) {
+        const sourceChange: FileChange = {
+          path: input.sourceFilePath!,
+          target: sourceTarget.target,
+          before: source,
+          after: sourceAfter,
+          encoding: source.encoding,
+        };
+        observed.push(sourceChange);
+        if (input.deleteSource) changes.push(sourceChange);
       }
     }
-    if (after.includes("\0") || encodeText(after, encoding).length > FILE_LIMIT)
-      throw new Error("Expected text at most 2 MiB");
-    if (before?.text === after) throw new Error("No changes requested");
-    context.signal.throwIfAborted();
-    // At most 8 plans (~32 MiB of source/replacement UTF-8 data); never store unbounded history.
-    if (inspectOnly)
-      return {
-        status: "preview",
-        path: input.path,
-        ...fileReview(before?.text ?? "", after),
-      };
-    while (this.plans.size >= 8)
-      this.plans.delete(this.plans.keys().next().value!);
-    const previewId = randomUUID();
-    this.plans.set(previewId, {
-      encoding,
-      matchType,
-      formatted,
-      signature,
+    const primary: FileChange = {
+      path: input.path,
+      target,
       before,
       after,
-      root,
-      target,
-      session: context.sessionId,
-      ...(context.projectId ? { project: context.projectId } : {}),
-      expires: Date.now() + 600_000,
-    });
-    return {
-      status: "preview",
-      previewId,
+      encoding,
+    };
+    changes.unshift(primary);
+    observed.unshift(primary);
+    for (const change of changes) {
+      if (options.autoFormat) {
+        try {
+          const { formatText } = await import("./format");
+          const output = await formatText(change.path, change.after);
+          formatted ||= output !== change.after;
+          change.after = output;
+        } catch {
+          /* Invalid or unsupported syntax retains the requested edit. */
+        }
+      }
+      if (
+        change.after.includes("\0") ||
+        encodeText(change.after, change.encoding).length > FILE_LIMIT
+      )
+        throw new Error("Expected text at most 2 MiB");
+    }
+    if (changes.every((change) => change.before?.text === change.after))
+      throw new Error("No changes requested");
+    context.signal.throwIfAborted();
+    const result = {
+      ...metadata,
       path: input.path,
       matchedLine,
       matchType,
       formatted,
-      ...fileReview(before?.text ?? "", after),
+      ...fileReview(before?.text ?? "", primary.after),
       beforeHash: before?.hash ?? null,
-      afterHash: hash(encodeText(after, encoding)),
-      bytes: encodeText(after, encoding).length,
+      afterHash: hash(encodeText(primary.after, encoding)),
+      bytes: encodeText(primary.after, encoding).length,
       encoding,
-      expiresInSeconds: 600,
-      message:
-        "No files changed. Review excerpts; apply with identical arguments and previewId.",
+      ...(kind === "copy"
+        ? {
+            changes: changes.map((change) => ({
+              path: change.path,
+              ...fileReview(change.before?.text ?? "", change.after),
+              encoding: change.encoding,
+            })),
+          }
+        : {}),
+      ...(kind === "copy" && changes.length > 1
+        ? {
+            sourceReview: fileReview(
+              changes[1]!.before!.text,
+              changes[1]!.after,
+            ),
+          }
+        : {}),
     };
-  }
-  private async apply(
-    plan: Plan,
-    path: string,
-    context: ToolContext,
-  ): Promise<void> {
-    const created: string[] = [];
-    let temporary: string | undefined;
-    let committed = false;
-    try {
-      const check = await writeTarget(plan.root, path, true, created);
-      if (check.root !== plan.root || check.target !== plan.target)
-        throw new Error("Path changed");
-      const current = await snapshot(plan.target, plan.encoding);
-      if (
-        current?.hash !== plan.before?.hash ||
-        current?.identity !== plan.before?.identity
-      )
-        throw new Error("File changed since preview; generate a new preview");
-      context.signal.throwIfAborted();
-      temporary = join(dirname(plan.target), `.modera-${randomUUID()}.tmp`);
-      const file = await open(
-        temporary,
-        "wx",
-        plan.before ? plan.before.mode & 0o777 : 0o666,
-      );
-      try {
-        await file.writeFile(encodeText(plan.after, plan.encoding));
-        if (plan.before) await file.chmod(plan.before.mode & 0o777);
-        await file.sync();
-      } finally {
-        await file.close();
-      }
-      if ((await writeTarget(plan.root, path)).target !== plan.target)
-        throw new Error("Path changed");
-      const latest = await snapshot(plan.target, plan.encoding);
-      if (
-        latest?.hash !== plan.before?.hash ||
-        latest?.identity !== plan.before?.identity
-      )
-        throw new Error("File changed during apply");
-      context.signal.throwIfAborted();
-      if (plan.before) await rename(temporary, plan.target);
-      else await link(temporary, plan.target); // Atomic no-clobber publication: cannot overwrite a newly created file.
-      committed = true;
-    } finally {
-      if (temporary) {
-        try {
-          await unlink(temporary);
-        } catch {
-          /* Rename already removed it, or OS cleanup is unavailable. */
-        }
-      }
-      if (!committed) await cleanParents(created);
-    }
+    if (inspectOnly) return { status: "preview", ...result };
+    while (this.plans.size >= 8)
+      this.plans.delete(this.plans.keys().next().value!);
+    const previewId = randomUUID();
+    this.plans.set(previewId, {
+      signature,
+      changes,
+      observed,
+      root,
+      session: context.sessionId,
+      project: context.projectId,
+      expires: Date.now() + 600_000,
+      result,
+    });
+    return {
+      status: "preview",
+      previewId,
+      ...result,
+      expiresInSeconds: 600,
+      message: "No files changed. Review the actual output before approval.",
+    };
   }
 }

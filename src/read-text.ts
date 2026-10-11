@@ -1,6 +1,7 @@
 import { open } from "node:fs/promises";
 
 import type { ToolContext } from "@modera/plugin-sdk";
+import { readOptions } from "./read-options";
 import {
   decodeText,
   detectEncoding,
@@ -11,6 +12,7 @@ import {
 interface ReadInput {
   path: string;
   startLine?: number;
+  endLine?: number;
   maxLines?: number;
   encoding?: TextEncoding;
   cursor?: number;
@@ -22,6 +24,7 @@ export async function readText(
   input: ReadInput,
   context: ToolContext,
 ) {
+  input = readOptions(input);
   const file = await open(target, "r");
   try {
     const info = await file.stat();
@@ -51,7 +54,9 @@ export async function readText(
       if (bytes.length > 2 * 1024 * 1024)
         throw new Error("File grew; retry using byte cursor");
       const { text, encoding } = decodeText(bytes, input.encoding);
-      const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
+      const body = text.replace(/^\uFEFF/, "");
+      const lines = body ? body.split(/\r?\n/) : [];
+      if (body.endsWith("\n")) lines.pop();
       const start = input.startLine ?? 1,
         max = input.maxLines ?? 100;
       const selected: string[] = [];
@@ -91,7 +96,7 @@ export async function readText(
         ...(hasMore ? { nextLine } : {}),
       };
     }
-    if (input.startLine !== undefined && input.startLine !== 1)
+    if (input.startLine !== 1 || input.endLine !== undefined)
       throw new Error("Large files require byte cursor paging, not startLine");
     const header = Buffer.alloc(Math.min(8192, info.size));
     await file.read(header, 0, header.length, 0);

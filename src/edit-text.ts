@@ -5,7 +5,8 @@ export function replaceText(
   replacement: string,
   occurrence?: number,
   fuzzy = false,
-) {
+  path = "",
+): { after: string; matchedLine: number; matchType: string } {
   if (!search) throw new Error("Search text must not be empty");
   const normalized = before.replace(/\r\n/g, "\n");
   let needle = search.replace(/\r\n/g, "\n");
@@ -14,6 +15,47 @@ export function replaceText(
   while ((offset = normalized.indexOf(needle, offset)) !== -1) {
     positions.push(offset);
     offset += needle.length;
+  }
+  if (!positions.length) {
+    const lines = needle.split("\n");
+    if (lines.every((line) => /^\s*\d+[:|] /.test(line))) {
+      const raw = lines
+        .map((line) => line.replace(/^\s*\d+[:|] /, ""))
+        .join("\n");
+      if (normalized.includes(raw))
+        return {
+          ...replaceText(before, raw, replacement, occurrence, false, path),
+          matchType: "line-prefix",
+        };
+    }
+  }
+  if (!positions.length && fuzzy) {
+    const repaired = normalizedMatch(normalized, needle, replacement, path);
+    if (repaired.length) {
+      if (repaired.length > 1 && occurrence === undefined)
+        throw new Error("Ambiguous match; specify occurrence");
+      const selected = occurrence ?? 1;
+      if (
+        !Number.isInteger(selected) ||
+        selected < 1 ||
+        selected > repaired.length
+      )
+        throw new Error("Invalid occurrence");
+      const match = repaired[selected - 1]!;
+      const equalBefore =
+        normalized.slice(0, match.offset).split(match.text).length - 1;
+      return {
+        ...replaceText(
+          before,
+          match.text,
+          match.replacement,
+          equalBefore + 1,
+          false,
+          path,
+        ),
+        matchType: match.type,
+      };
+    }
   }
   if (!positions.length && fuzzy) {
     const wanted = needle.split("\n"),
@@ -106,6 +148,89 @@ export function replaceText(
     matchedLine: before.slice(0, from).split("\n").length,
     matchType: needle === search.replace(/\r\n/g, "\n") ? "exact" : "fuzzy",
   };
+}
+
+/** Recover copied whitespace without guessing structure in Python/YAML/Makefile. */
+function normalizedMatch(
+  content: string,
+  search: string,
+  replacement: string,
+  path: string,
+) {
+  const wanted = search.split("\n"),
+    lines = content.split("\n");
+  const sensitive =
+    /(?:\.(?:py|pyi|ya?ml)|(?:^|[/\\])(?:GNUmakefile|Makefile|[^/\\]+\.mk))$/i.test(
+      path,
+    );
+  const result: {
+    offset: number;
+    text: string;
+    replacement: string;
+    type: string;
+  }[] = [];
+  let offset = 0,
+    work = 0;
+  for (let i = 0; i + wanted.length <= lines.length; i++) {
+    const region = lines.slice(i, i + wanted.length);
+    work +=
+      region.reduce((size, line) => size + line.length, 0) + search.length;
+    if (work > 5_000_000)
+      throw new Error("Matching budget exceeded; reread and use exact text");
+    if (sensitive) {
+      if (
+        region.every((line, at) => line.trimStart() === wanted[at]!.trimStart())
+      ) {
+        const nonblank = wanted
+          .map((line, at) => ({ line, at }))
+          .filter(({ line }) => line.trim());
+        const shifts = nonblank.map(
+          ({ line, at }) =>
+            region[at]!.match(/^ */)![0].length - line.match(/^ */)![0].length,
+        );
+        const shift = shifts[0] ?? 0;
+        const replaceLines = replacement.replace(/\r\n/g, "\n").split("\n");
+        if (
+          !region
+            .concat(wanted, replaceLines)
+            .some((line) => /^\s*\t/.test(line)) &&
+          shifts.every((value) => value === shift) &&
+          replaceLines.every(
+            (line) => !line.trim() || line.match(/^ */)![0].length + shift >= 0,
+          )
+        ) {
+          result.push({
+            offset,
+            text: region.join("\n"),
+            replacement: replaceLines
+              .map((line) =>
+                !line.trim()
+                  ? line
+                  : " ".repeat(line.match(/^ */)![0].length + shift) +
+                    line.trimStart(),
+              )
+              .join("\n"),
+            type: "indentation",
+          });
+        }
+      }
+    } else if (
+      region.every(
+        (line, at) =>
+          line.trim().replace(/\s+/g, " ") ===
+          wanted[at]!.trim().replace(/\s+/g, " "),
+      )
+    ) {
+      result.push({
+        offset,
+        text: region.join("\n"),
+        replacement,
+        type: "whitespace",
+      });
+    }
+    offset += lines[i]!.length + 1;
+  }
+  return result;
 }
 
 function similarity(left: string, right: string) {

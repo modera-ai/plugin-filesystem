@@ -1,5 +1,6 @@
 import { realpath, mkdir, rmdir, stat } from "node:fs/promises";
 import { resolve, dirname, basename } from "node:path";
+import { homedir } from "node:os";
 
 export function localPath(workspace: string, path: string) {
   if (typeof path !== "string") throw new Error("File path required");
@@ -8,7 +9,14 @@ export function localPath(workspace: string, path: string) {
     .replace(/\0/g, "")
     .replace(/^\uFEFF/, "");
   if (!normalized) throw new Error("File path must not be empty");
-  return resolve(workspace, normalized);
+  return resolve(
+    workspace,
+    normalized === "~"
+      ? homedir()
+      : /^~[/\\]/.test(normalized)
+        ? resolve(homedir(), normalized.slice(2))
+        : normalized,
+  );
 }
 
 /** Resolve existing links without imposing a project boundary. */
