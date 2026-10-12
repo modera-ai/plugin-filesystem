@@ -1,6 +1,6 @@
 {
   "name": "@modera-plugin/filesystem",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "Read local files, preview and apply creation, text replacement and line copy/cut operations.",
   "files": [

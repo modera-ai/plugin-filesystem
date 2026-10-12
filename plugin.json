@@ -4,7 +4,7 @@
   "activationScope": "scoped",
   "id": "modera.filesystem",
   "name": "Filesystem",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "读取本地文件，预览并应用文件创建、文本替换及按行复制或剪切。",
   "author": "Modera",
   "category": "files",
