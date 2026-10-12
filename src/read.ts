@@ -1,4 +1,4 @@
-import { opendir, stat } from "node:fs/promises";
+import { opendir, stat } from "@modera/plugin-sdk/workspace-fs";
 import { localPath } from "./write-path";
 import { readText } from "./read-text";
 import type { ToolContext } from "@modera/plugin-sdk";

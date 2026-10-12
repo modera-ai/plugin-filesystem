@@ -1,4 +1,4 @@
-import { opendir, open, stat, readFile } from "node:fs/promises";
+import { opendir, open, stat, readFile } from "@modera/plugin-sdk/workspace-fs";
 import { createHash } from "node:crypto";
 import ignore from "ignore";
 

@@ -1,11 +1,13 @@
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { activate } from "../src";
 
 it("reads bounded numbered lines and accepts absolute and parent paths", async () => {
-  const root = await mkdtemp(join(tmpdir(), "modera-workspace-test-"));
+  const parent = await mkdtemp(join(tmpdir(), "modera-workspace-test-"));
+  const root = join(parent, "project");
+  await mkdir(root);
   try {
     await writeFile(join(root, "sample.txt"), "one\ntwo\nthree");
     const contributions = await activate({
@@ -71,7 +73,7 @@ it("reads bounded numbered lines and accepts absolute and parent paths", async (
       "Binary",
     );
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
   }
 });
 

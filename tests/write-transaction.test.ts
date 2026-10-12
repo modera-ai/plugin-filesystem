@@ -4,8 +4,8 @@ const failure = vi.hoisted(() => ({
   once: false,
   afterRename: undefined as (() => void | Promise<void>) | undefined,
 }));
-vi.mock("node:fs/promises", async (original) => {
-  const actual = await original<typeof import("node:fs/promises")>();
+vi.mock("@modera/plugin-sdk/workspace-fs", async (original) => {
+  const actual = await original<typeof import("@modera/plugin-sdk/workspace-fs")>();
   return {
     ...actual,
     rename: async (from: string, to: string) => {

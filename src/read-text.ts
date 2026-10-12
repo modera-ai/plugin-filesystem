@@ -1,4 +1,4 @@
-import { open } from "node:fs/promises";
+import { open } from "@modera/plugin-sdk/workspace-fs";
 
 import type { ToolContext } from "@modera/plugin-sdk";
 import { readOptions } from "./read-options";

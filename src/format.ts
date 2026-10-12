@@ -6,7 +6,7 @@ import postcss from "prettier/plugins/postcss";
 import html from "prettier/plugins/html";
 import markdown from "prettier/plugins/markdown";
 import yaml from "prettier/plugins/yaml";
-import { extname } from "node:path";
+import { extname } from "@modera/plugin-sdk/workspace-path";
 export async function formatText(path: string, source: string) {
   const parsers: Record<string, string> = {
     ".js": "babel",

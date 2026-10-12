@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { open } from "node:fs/promises";
+import { open } from "@modera/plugin-sdk/workspace-fs";
 import { decodeText, type TextEncoding } from "./codec";
 
 export const FILE_LIMIT = 2 * 1024 * 1024;

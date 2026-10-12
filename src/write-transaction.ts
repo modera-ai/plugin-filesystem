@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { open, rename, link, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { open, rename, link, unlink } from "@modera/plugin-sdk/workspace-fs";
+import { dirname, join } from "@modera/plugin-sdk/workspace-path";
 import type { ToolContext } from "@modera/plugin-sdk";
 import { snapshot, hash } from "./file-snapshot";
 import { encodeText, type TextEncoding } from "./codec";

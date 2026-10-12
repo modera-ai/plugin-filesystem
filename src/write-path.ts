@@ -1,5 +1,5 @@
-import { realpath, mkdir, rmdir, stat } from "node:fs/promises";
-import { resolve, dirname, basename } from "node:path";
+import { realpath, mkdir, rmdir, stat } from "@modera/plugin-sdk/workspace-fs";
+import { resolve, dirname, basename, isRemotePath, workspaceUri, remotePath } from "@modera/plugin-sdk/workspace-path";
 import { homedir } from "node:os";
 
 export function localPath(workspace: string, path: string) {
@@ -9,6 +9,10 @@ export function localPath(workspace: string, path: string) {
     .replace(/\0/g, "")
     .replace(/^\uFEFF/, "");
   if (!normalized) throw new Error("File path must not be empty");
+  if (isRemotePath(workspace) && /^~(?:\/|$)/.test(normalized)) {
+    if (normalized.split("/").includes("..")) throw new Error("Use an absolute server path when traversing above ~");
+    return workspaceUri(remotePath(workspace).profileId, "/~" + normalized.slice(1));
+  }
   return resolve(
     workspace,
     normalized === "~"

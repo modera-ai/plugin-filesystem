@@ -1,6 +1,6 @@
-import { open } from "node:fs/promises";
+import { open } from "@modera/plugin-sdk/workspace-fs";
 import { Worker } from "node:worker_threads";
-import { extname, join } from "node:path";
+import { extname, join } from "@modera/plugin-sdk/workspace-path";
 import type { ToolContext } from "@modera/plugin-sdk";
 import { readOptions } from "./read-options";
 
