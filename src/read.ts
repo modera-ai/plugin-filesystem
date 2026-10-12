@@ -5,6 +5,7 @@ import type { ToolContext } from "@modera/plugin-sdk";
 import { extensionOf, mediaExtensions, readMedia } from "./media";
 import { readOptions } from "./read-options";
 import { hash } from "./file-snapshot";
+import { isRemotePath } from "@modera/plugin-sdk/workspace-path";
 
 export async function readWorkspace(
   input: unknown,
@@ -25,13 +26,13 @@ export async function readWorkspace(
   const { path, offset = 0 } = options;
   context.signal.throwIfAborted();
   const target = localPath(context.workspacePath ?? process.cwd(), path);
-  if ((await stat(target)).isDirectory()) {
+  const initial = await stat(target);
+  if (initial.isDirectory()) {
     if (options.cursor !== undefined || options.endLine !== undefined)
       throw new Error("Directories use offset, not cursor or endLine");
     if (!Number.isSafeInteger(offset) || offset < 0)
       throw new Error("Invalid directory offset");
     const entries: { name: string; type: string }[] = [];
-    const initial = await stat(target);
     for await (const entry of await opendir(target)) {
       context.signal.throwIfAborted();
       if (entries.length >= 50000)
@@ -50,7 +51,9 @@ export async function readWorkspace(
     entries.sort((left, right) =>
       left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
     );
-    const latest = await stat(target);
+    // SFTP timestamps have second precision and cannot establish a consistent
+    // listing. The returned entry digest already detects changes between pages.
+    const latest = isRemotePath(target) ? initial : await stat(target);
     if (
       initial.mtimeMs !== latest.mtimeMs ||
       initial.ctimeMs !== latest.ctimeMs

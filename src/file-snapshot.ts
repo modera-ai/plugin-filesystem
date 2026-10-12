@@ -1,6 +1,17 @@
+import { fileIdentity } from "./file-identity";
 import { createHash } from "node:crypto";
 import { open } from "@modera/plugin-sdk/workspace-fs";
+import { isRemotePath } from "@modera/plugin-sdk/workspace-path";
 import { decodeText, type TextEncoding } from "./codec";
+import { remoteTransport } from "@modera/plugin-sdk/workspace-transport";
+
+export interface RemoteVersion {
+  exists: boolean;
+  size?: number;
+  mtimeMs?: number;
+  mode?: number;
+  sha256?: string;
+}
 
 export const FILE_LIMIT = 2 * 1024 * 1024;
 export const hash = (bytes: Buffer | string) =>
@@ -10,6 +21,26 @@ export async function snapshot(
   encoding?: TextEncoding,
   allowStagingLink = false,
 ) {
+  if (isRemotePath(path)) {
+    const result = (await remoteTransport().file("readVersion", [
+      path,
+      { maxBytes: FILE_LIMIT },
+    ])) as {
+      content: Buffer | null;
+      version: RemoteVersion;
+    };
+    if (!result.version.exists || !result.content) return null;
+    if (result.content.length > FILE_LIMIT)
+      throw new Error("File exceeds 2 MiB");
+    return {
+      ...decodeText(result.content, encoding),
+      hash: hash(result.content),
+      mode: result.version.mode!,
+      size: result.content.length,
+      identity: JSON.stringify(result.version),
+      remoteVersion: result.version,
+    };
+  }
   let file;
   try {
     file = await open(path, "r");
@@ -18,7 +49,21 @@ export async function snapshot(
     throw cause;
   }
   try {
-    const info = await file.stat();
+    const handleInfo = await file.stat();
+    const info = isRemotePath(path) ? await fileIdentity(path) : handleInfo;
+    if (
+      !handleInfo.isFile() ||
+      handleInfo.size !== info.size ||
+      Math.floor(handleInfo.mtimeMs / 1000) !== Math.floor(info.mtimeMs / 1000)
+    )
+      throw new Error("File path changed while opening snapshot");
+    if (![info.dev, info.ino, info.nlink, info.ctimeMs].every(Number.isFinite))
+      throw Object.assign(
+        new Error(
+          "服务器文件协议未提供可靠的 inode、硬链接数和变更时间；无法安全预览或提交事务编辑",
+        ),
+        { code: "ENOTSUP" },
+      );
     if (
       !info.isFile() ||
       info.size > FILE_LIMIT ||
@@ -34,8 +79,13 @@ export async function snapshot(
     }
     if (size > FILE_LIMIT) throw new Error("File exceeds 2 MiB");
     const data = bytes.subarray(0, size);
-    const latest = await file.stat();
+    const handleLatest = await file.stat();
+    const latest = isRemotePath(path) ? await fileIdentity(path) : handleLatest;
     if (
+      handleLatest.size !== size ||
+      handleLatest.mtimeMs !== handleInfo.mtimeMs ||
+      latest.dev !== info.dev ||
+      latest.ino !== info.ino ||
       latest.size !== size ||
       latest.mtimeMs !== info.mtimeMs ||
       latest.ctimeMs !== info.ctimeMs ||
@@ -49,6 +99,7 @@ export async function snapshot(
       mode: info.mode,
       size,
       identity: `${info.dev}:${info.ino}:${info.mtimeMs}:${info.ctimeMs}`,
+      remoteVersion: undefined as RemoteVersion | undefined,
     };
   } finally {
     await file.close();

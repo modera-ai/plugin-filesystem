@@ -1,10 +1,12 @@
+import { fileIdentity } from "./file-identity";
 import { randomUUID } from "node:crypto";
 import { open, rename, link, unlink } from "@modera/plugin-sdk/workspace-fs";
-import { dirname, join } from "@modera/plugin-sdk/workspace-path";
+import { dirname, join, isRemotePath } from "@modera/plugin-sdk/workspace-path";
 import type { ToolContext } from "@modera/plugin-sdk";
 import { snapshot, hash } from "./file-snapshot";
 import { encodeText, type TextEncoding } from "./codec";
 import { cleanParents, writeTarget } from "./write-path";
+import { applyRemoteChanges } from "./remote-write-transaction";
 
 export interface FileChange {
   path: string;
@@ -33,6 +35,10 @@ export async function applyChanges(
   context: ToolContext,
   observed = changes,
 ) {
+  if (isRemotePath(root))
+    return applyRemoteChanges(root, changes, context, () =>
+      verifyChanges(root, observed),
+    );
   const parents: string[] = [],
     staged: {
       change: FileChange;
@@ -60,7 +66,16 @@ export async function applyChanges(
       );
       staged.push({ change, temporary, committed: false });
       try {
-        const info = await file.stat();
+        const info = isRemotePath(temporary)
+          ? await fileIdentity(temporary)
+          : await file.stat();
+        if (
+          ![info.dev, info.ino, info.nlink, info.ctimeMs].every(Number.isFinite)
+        )
+          throw Object.assign(
+            new Error("服务器未提供事务编辑所需的可靠文件身份"),
+            { code: "ENOTSUP" },
+          );
         staged[staged.length - 1]!.identity = `${info.dev}:${info.ino}`;
         await file.writeFile(encodeText(change.after, change.encoding));
         if (change.before) await file.chmod(change.before.mode & 0o777);
